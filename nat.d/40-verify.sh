@@ -53,7 +53,7 @@ emit "timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 emit "host:      $(hostname)"
 emit "kernel:    $(uname -r)"
 emit "uptime:    $(uptime -p 2>/dev/null || uptime)"
-emit "nat.toml:  $CONF"
+emit "config.toml: $CONF"
 emit "nft table: inet $TABLE"
 
 # --- environment ---
@@ -239,7 +239,7 @@ else
     if ((${#TCP_ELEMS[@]} > 0)); then
         tcp_count=$(count_dnat_elems dnat_tcp)
         if [[ "$tcp_count" == "${#TCP_ELEMS[@]}" ]]; then
-            pass "map dnat_tcp: $tcp_count elements (matches nat.toml)"
+            pass "map dnat_tcp: $tcp_count elements (matches config.toml)"
         else
             fl "map dnat_tcp: $tcp_count elements, expected ${#TCP_ELEMS[@]}"
         fi
@@ -247,7 +247,7 @@ else
     if ((${#UDP_ELEMS[@]} > 0)); then
         udp_count=$(count_dnat_elems dnat_udp)
         if [[ "$udp_count" == "${#UDP_ELEMS[@]}" ]]; then
-            pass "map dnat_udp: $udp_count elements (matches nat.toml)"
+            pass "map dnat_udp: $udp_count elements (matches config.toml)"
         else
             fl "map dnat_udp: $udp_count elements, expected ${#UDP_ELEMS[@]}"
         fi

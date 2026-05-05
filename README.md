@@ -11,7 +11,7 @@ live in a separate project.
 
 ```
 /etc/wg-nat/
-├── nat.toml              # TOML config
+├── config.toml           # TOML config
 ├── apply-nat.sh          # orchestrator
 └── nat.d/
     ├── lib.sh                # config loader + validation + helpers
@@ -54,13 +54,13 @@ sudo /etc/wg-nat/nat.d/40-verify.sh
 
 ## Environment
 
-| var          | default                     | meaning                                       |
-| ------------ | --------------------------- | --------------------------------------------- |
-| `NAT_CONF`   | `/etc/wg-nat/nat.toml`      | path to config (overridden by `--config`)     |
+| var          | default                       | meaning                                       |
+| ------------ | ----------------------------- | --------------------------------------------- |
+| `NAT_CONF`   | `/etc/wg-nat/config.toml`   | path to config (overridden by `--config`)     |
 | `NFT_TABLE`  | `wg_nat`                    | nftables table name (overridden by `--table`) |
 | `VERIFY_LOG` | `/tmp/apply-nat-verify.log` | path for the `--verify` log                   |
 
-## nat.toml
+## config.toml
 
 ```toml
 [wireguard]
@@ -221,7 +221,7 @@ sudo ufw allow <wireguard_port>/udp
 sudo ufw reload
 ```
 
-For the example `nat.toml` in this README (`external.interface = "eth0"`,
+For the example `config.toml` in this README (`external.interface = "eth0"`,
 `wireguard.interface = "wg0"`, `wireguard.port = 51820`):
 
 ```bash

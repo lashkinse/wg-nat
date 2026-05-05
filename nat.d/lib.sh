@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # Shared helpers + config loader for apply-nat stages. Sourced, not executed.
 
-CONF="${NAT_CONF:-/etc/wg-nat/nat.toml}"
+CONF="${NAT_CONF:-/etc/wg-nat/config.toml}"
 TABLE="${NFT_TABLE:-wg_nat}"
 
 # Even in minimal mode (teardown) we still need TABLE for `nft delete table`.

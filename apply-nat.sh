@@ -32,12 +32,12 @@ Special modes:
              applied correctly
 
 CLI flags (override env vars below):
-  --config <path>   path to nat.toml (sets NAT_CONF)
-  --table  <name>   nft table name   (sets NFT_TABLE)
+  --config <path>   path to config.toml (sets NAT_CONF)
+  --table  <name>   nft table name      (sets NFT_TABLE)
 
 Environment:
-  NAT_CONF    path to nat.toml        (default: /etc/wg-nat/nat.toml)
-  NFT_TABLE   nft table name          (default: wg_nat)
+  NAT_CONF    path to config.toml   (default: /etc/wg-nat/config.toml)
+  NFT_TABLE   nft table name        (default: wg_nat)
   VERIFY_LOG  path to verify log      (default: /tmp/apply-nat-verify.log)
 EOF
 }
