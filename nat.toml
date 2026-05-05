@@ -1,0 +1,31 @@
+[wireguard]
+interface = "wg0"
+port = 51820
+
+[external]
+interface = "eth0"
+ip = "203.0.113.10" # empty string for dynamic IP / MASQUERADE
+
+[[port_rules]]
+protocol = "udp"
+target = "10.66.66.2"
+ports = "27015-27050"
+
+[[port_rules]]
+protocol = "udp"
+target = "10.66.66.2"
+ports = "3478-3480"
+
+[[port_rules]]
+protocol = "tcp"
+target = "10.66.66.2"
+ports = "27015-27050"
+
+[tuning]
+conntrack_max          = 32768       # ~13 MB worst case (×~400 B per entry); sized for 1-core / 512 MB VPS
+conntrack_hashsize     = 32768       # 1:1 with conntrack_max - shortest hash chains, ~512 KB hashtable
+rmem_max               = 1048576     # 1 MB max per-socket recv buffer
+wmem_max               = 1048576     # 1 MB max per-socket send buffer
+netdev_max_backlog     = 4096        # per-CPU input queue depth (only one queue on a 1-core box)
+udp_timeout            = 5           # short on purpose - game flows churn fast
+udp_timeout_stream     = 30          # faster conntrack turnover (flowtable handles hot paths)
