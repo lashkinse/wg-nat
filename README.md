@@ -165,6 +165,132 @@ without `10-sysctl.sh` running, alongside what we set instead:
 | `net.netfilter.nf_conntrack_timestamp`          | `0`                           | `0`          | Same.                                                                                          |
 | `net.netfilter.nf_conntrack_helper`             | `0`                           | `0`          | Same.                                                                                          |
 
+### Sizing presets
+
+The `[tuning]` defaults are sized for a 1-vCPU / 512 MB VPS. Bigger hosts
+can lift the memory- and PPS-bound knobs proportionally. None of these
+numbers need to be exact — they are starting points; bump and re-measure
+under your actual peak load.
+
+The knobs split cleanly into two axes:
+
+- **RAM-bound**: `conntrack_max`, `conntrack_hashsize`, `rmem_max`,
+  `wmem_max`, `netdev_max_backlog`. Drive these from the host's RAM.
+- **PPS / softirq-bound**: `netdev_budget`, `netdev_budget_usecs`.
+  Drive these from the number of CPUs (and how dedicated they are).
+- **Workload-bound**: `udp_timeout`, `udp_timeout_stream`. These reflect
+  the traffic shape (UDP game flows churn fast), not the host size.
+  Don't scale them with hardware.
+
+#### By RAM
+
+| host RAM | `conntrack_max` | `conntrack_hashsize` | `rmem_max` / `wmem_max` | `netdev_max_backlog` |
+| -------- | --------------- | -------------------- | ----------------------- | -------------------- |
+| 512 MB   | `32768`         | `32768`              | `1048576` (1 MB)        | `4096`               |
+| 1 GB     | `65536`         | `65536`              | `2097152` (2 MB)        | `8192`               |
+| 2 GB     | `131072`        | `131072`             | `4194304` (4 MB)        | `16384`              |
+
+Worst-case `nf_conntrack` memory ≈ `conntrack_max × ~400 B` for entries
+plus `conntrack_hashsize × 16 B` for the hashtable. The 2 GB row is
+~50 MB worst case, well inside budget. `rmem_max` / `wmem_max` are
+per-socket caps, not allocations — the kernel only grows the buffer up
+to the cap when an application asks for it, so lifting the cap on a
+big host costs nothing until traffic demands it.
+
+#### By vCPU
+
+| vCPU  | `netdev_budget` | `netdev_budget_usecs` |
+| ----- | --------------- | --------------------- |
+| 1     | `600`           | `8000`                |
+| 2     | `900`           | `12000`               |
+| 3 - 4 | `1200`          | `16000`               |
+
+A bigger budget lets NAPI process more packets per softirq pass before
+yielding to `ksoftirqd`, which reduces softirq->ksoftirqd reschedules
+under high PPS at the cost of slightly higher userspace latency. Past
+4 vCPU the marginal return drops, and you usually want multi-queue NIC
++ per-CPU IRQ affinity, which is out of scope here.
+
+#### Combined presets
+
+**512 MB / 1 vCPU** — the shipped default; also good for cheap
+game-port forwarders:
+
+```toml
+[tuning]
+conntrack_max          = 32768
+conntrack_hashsize     = 32768
+rmem_max               = 1048576
+wmem_max               = 1048576
+netdev_max_backlog     = 4096
+netdev_budget          = 600
+netdev_budget_usecs    = 8000
+udp_timeout            = 5
+udp_timeout_stream     = 30
+```
+
+**1 GB / 2 vCPU**:
+
+```toml
+[tuning]
+conntrack_max          = 65536
+conntrack_hashsize     = 65536
+rmem_max               = 2097152
+wmem_max               = 2097152
+netdev_max_backlog     = 8192
+netdev_budget          = 900
+netdev_budget_usecs    = 12000
+udp_timeout            = 5
+udp_timeout_stream     = 30
+```
+
+**2 GB / 3 - 4 vCPU**:
+
+```toml
+[tuning]
+conntrack_max          = 131072
+conntrack_hashsize     = 131072
+rmem_max               = 4194304
+wmem_max               = 4194304
+netdev_max_backlog     = 16384
+netdev_budget          = 1200
+netdev_budget_usecs    = 16000
+udp_timeout            = 5
+udp_timeout_stream     = 30
+```
+
+#### Scaling further
+
+Past 2 GB / 4 vCPU, the rough rules of thumb:
+
+- **`conntrack_max` / `conntrack_hashsize`**: keep them 1:1, double per
+  doubling of RAM, then cap at your actual peak number of concurrent
+  flows + ~50% headroom. Read the live count under load via
+  `cat /proc/sys/net/netfilter/nf_conntrack_count` and size from there.
+  Past 256k-512k entries the hashtable starts taking real memory; on a
+  forwarder with notrack on the WG transport port and flowtable on the
+  hot path, you rarely need more than 128k.
+- **`rmem_max` / `wmem_max`**: these caps mostly affect TCP applications
+  running *on* the box (sshd, monitoring, etc.), not forwarded traffic
+  — flowtable and DNAT'd flows don't allocate per-socket buffers. Stop
+  bumping at 4-8 MB; further increases buy nothing on a pure NAT host.
+- **`netdev_max_backlog`**: scale with your peak per-CPU PPS — rule of
+  thumb is `≥ peak_pps_per_cpu × 2 ms` plus a comfortable cushion for
+  bursts. For practical purposes 16k - 32k covers most workloads.
+- **`netdev_budget`**: past `1500 / 20000` you start hurting userspace
+  latency on non-dedicated cores. Dedicated routing appliances run
+  `5000 / 50000`, but that's a different workload shape than this
+  project targets.
+- **`udp_timeout` / `udp_timeout_stream`**: don't change with hardware.
+  Lower them further if you see `nf_conntrack: table full` despite a
+  high `conntrack_max`; raise only if the forwarded application needs
+  long-lived idle UDP.
+
+For anything past 4 vCPU / 4 GB, also enable multi-queue virtio (or
+your NIC's equivalent), pin `eth0` RX-IRQ + the WireGuard kernel
+workqueue to specific CPUs, and consider XDP for the DNAT fast path.
+Those changes live outside `config.toml`.
+
 ## nftables ruleset
 
 `30-nftables.sh` (re)creates `inet $NFT_TABLE` atomically with:
