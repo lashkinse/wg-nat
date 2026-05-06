@@ -15,6 +15,8 @@ require_root
 sset net.ipv4.ip_forward 1
 
 sset net.core.netdev_max_backlog "$TUNING_NETDEV_MAX_BACKLOG"
+sset net.core.netdev_budget "$TUNING_NETDEV_BUDGET"
+sset net.core.netdev_budget_usecs "$TUNING_NETDEV_BUDGET_USECS"
 sset net.core.rmem_max "$TUNING_RMEM_MAX"
 sset net.core.wmem_max "$TUNING_WMEM_MAX"
 

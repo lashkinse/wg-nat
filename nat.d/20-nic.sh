@@ -29,7 +29,7 @@ fi
 # RPS spreads softirq work across CPUs; pure overhead on a single-core box.
 NPROC=$(nproc)
 
-# rps_cpus is comma-separated 32-bit hex words; naive (1<<n)-1 works for n<=32.
+# rps_cpus is comma-separated 32-bit hex words; naive (1<<n)-1 overflows at n>=32.
 rps_mask() {
     local n="$1"
     local full=$((n / 32)) rem=$((n % 32)) out="" i

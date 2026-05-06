@@ -16,7 +16,7 @@ live in a separate project.
 └── nat.d/
     ├── lib.sh                # config loader + validation + helpers
     ├── 10-sysctl.sh          # ip_forward + conntrack/socket tuning
-    ├── 20-nic.sh             # ethtool offloads + external RPS
+    ├── 20-nic.sh             # ethtool offloads (GRO/GSO/TSO + UDP GRO fwd) + external RPS
     ├── 30-nftables.sh        # nft ruleset (flowtable + DNAT maps)
     ├── 40-verify.sh          # post-apply verification + log
     └── 99-teardown.sh        # remove nft table
@@ -87,6 +87,8 @@ conntrack_hashsize     = 32768
 rmem_max               = 1048576
 wmem_max               = 1048576
 netdev_max_backlog     = 4096
+netdev_budget          = 600
+netdev_budget_usecs    = 8000
 udp_timeout            = 5
 udp_timeout_stream     = 30
 ```
@@ -134,6 +136,8 @@ Values are validated as positive integers.
 | `rmem_max`           | `1048576` | `net.core.rmem_max` - max per-socket recv buffer (1 MB).                                                                                                                                 |
 | `wmem_max`           | `1048576` | `net.core.wmem_max` - max per-socket send buffer (1 MB).                                                                                                                                 |
 | `netdev_max_backlog` | `4096`    | `net.core.netdev_max_backlog` - per-CPU input queue depth.                                                                                                                               |
+| `netdev_budget`      | `600`     | `net.core.netdev_budget` - max packets per softirq NAPI poll cycle (kernel default `300`). Higher = fewer softirq->ksoftirqd reschedules under high PPS, at the cost of more userspace latency. |
+| `netdev_budget_usecs` | `8000`    | `net.core.netdev_budget_usecs` - max usecs per softirq NAPI poll cycle (kernel default `2000`). Same trade-off as above, time-bounded.                                                  |
 | `udp_timeout`        | `5`       | `nf_conntrack_udp_timeout`. Short on purpose - game flows churn fast.                                                                                                                    |
 | `udp_timeout_stream` | `30`      | `nf_conntrack_udp_timeout_stream`. Lower means faster slot turnover; flowtable handles hot established traffic anyway.                                                                   |
 
@@ -151,6 +155,8 @@ without `10-sysctl.sh` running, alongside what we set instead:
 | `net.core.rmem_max`                             | `212992` (208 KB)             | `1048576`    | Bigger per-socket recv buffer cap so the WG tunnel keeps up under bursty load.                 |
 | `net.core.wmem_max`                             | `212992` (208 KB)             | `1048576`    | Same for send.                                                                                 |
 | `net.core.netdev_max_backlog`                   | `1000`                        | `4096`       | Avoid drops on a single softirq CPU during traffic peaks.                                      |
+| `net.core.netdev_budget`                        | `300`                         | `600`        | More packets per softirq NAPI poll = fewer ksoftirqd reschedules on a single-core forwarder.   |
+| `net.core.netdev_budget_usecs`                  | `2000`                        | `8000`       | Same idea, time-bounded.                                                                       |
 | `net.netfilter.nf_conntrack_max`                | RAM-scaled (~8-16k on 512 MB) | `32768`      | Pin a predictable cap with 2-4x headroom over the auto-sized default.                          |
 | `nf_conntrack` hashsize                         | `nf_conntrack_max / 4`        | `32768`      | 1:1 ratio for the shortest hash chains; ~512 KB hashtable is trivial here.                     |
 | `net.netfilter.nf_conntrack_udp_timeout`        | `30`                          | `5`          | Game UDP churns fast - drop dead flows aggressively to free conntrack slots.                   |
@@ -191,6 +197,9 @@ the nft maps use `ipv4_addr`. IPv6 forwarding/NAT needs a separate design.
 - Kernel modules: `nf_conntrack`, `nf_nat`, `nf_flow_table`,
   `nf_flow_table_inet`, and nftables modules.
 - Kernel **≥ 5.6** for NAT-aware flowtable offload.
+- Kernel **≥ 5.10** for UDP GRO forwarding
+  (`rx-gro-list` + `rx-udp-gro-forwarding`); on older kernels `20-nic.sh`
+  warns and continues.
 
 ## Firewalls (UFW / firewalld)
 

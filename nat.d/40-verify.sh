@@ -133,6 +133,8 @@ check_sysctl() {
 
 check_sysctl net.ipv4.ip_forward 1
 check_sysctl net.core.netdev_max_backlog "$TUNING_NETDEV_MAX_BACKLOG"
+check_sysctl net.core.netdev_budget "$TUNING_NETDEV_BUDGET"
+check_sysctl net.core.netdev_budget_usecs "$TUNING_NETDEV_BUDGET_USECS"
 check_sysctl net.core.rmem_max "$TUNING_RMEM_MAX"
 check_sysctl net.core.wmem_max "$TUNING_WMEM_MAX"
 check_sysctl net.netfilter.nf_conntrack_max "$TUNING_CONNTRACK_MAX"
@@ -159,7 +161,9 @@ for iface in "$EXTERNAL_INTERFACE" "$WIREGUARD_INTERFACE"; do
     done < <(awk '
         /^generic-receive-offload:/ ||
         /^generic-segmentation-offload:/ ||
-        /^tcp-segmentation-offload:/ {
+        /^tcp-segmentation-offload:/ ||
+        /^rx-gro-list:/ ||
+        /^rx-udp-gro-forwarding:/ {
             sub(":", "", $1); print $1 "\t" $2
         }' <<<"$features")
 done

@@ -27,5 +27,7 @@ conntrack_hashsize     = 32768       # 1:1 with conntrack_max - shortest hash ch
 rmem_max               = 1048576     # 1 MB max per-socket recv buffer
 wmem_max               = 1048576     # 1 MB max per-socket send buffer
 netdev_max_backlog     = 4096        # per-CPU input queue depth (only one queue on a 1-core box)
+netdev_budget          = 600         # max packets per softirq NAPI poll cycle
+netdev_budget_usecs    = 8000        # max usecs per softirq NAPI poll cycle (time-bounded twin of netdev_budget)
 udp_timeout            = 5           # short on purpose - game flows churn fast
 udp_timeout_stream     = 30          # faster conntrack turnover (flowtable handles hot paths)

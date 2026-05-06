@@ -141,6 +141,8 @@ load_config() {
     TUNING_RMEM_MAX=""
     TUNING_WMEM_MAX=""
     TUNING_NETDEV_MAX_BACKLOG=""
+    TUNING_NETDEV_BUDGET=""
+    TUNING_NETDEV_BUDGET_USECS=""
     TUNING_UDP_TIMEOUT=""
     TUNING_UDP_TIMEOUT_STREAM=""
     # -g: visible to finish_port_rule (caller scope) and later stages.
@@ -195,6 +197,8 @@ load_config() {
             tuning:rmem_max) TUNING_RMEM_MAX="$value" ;;
             tuning:wmem_max) TUNING_WMEM_MAX="$value" ;;
             tuning:netdev_max_backlog) TUNING_NETDEV_MAX_BACKLOG="$value" ;;
+            tuning:netdev_budget) TUNING_NETDEV_BUDGET="$value" ;;
+            tuning:netdev_budget_usecs) TUNING_NETDEV_BUDGET_USECS="$value" ;;
             tuning:udp_timeout) TUNING_UDP_TIMEOUT="$value" ;;
             tuning:udp_timeout_stream) TUNING_UDP_TIMEOUT_STREAM="$value" ;;
             port_rules:protocol) rule_protocol="$value" ;;
@@ -244,11 +248,14 @@ if [[ "${NAT_LIB_MINIMAL:-0}" != "1" ]]; then
     : "${TUNING_RMEM_MAX:=1048576}"
     : "${TUNING_WMEM_MAX:=1048576}"
     : "${TUNING_NETDEV_MAX_BACKLOG:=4096}"
+    : "${TUNING_NETDEV_BUDGET:=600}"
+    : "${TUNING_NETDEV_BUDGET_USECS:=8000}"
     : "${TUNING_UDP_TIMEOUT:=5}"
     : "${TUNING_UDP_TIMEOUT_STREAM:=30}"
 
     for k in TUNING_CONNTRACK_MAX TUNING_CONNTRACK_HASHSIZE \
         TUNING_RMEM_MAX TUNING_WMEM_MAX TUNING_NETDEV_MAX_BACKLOG \
+        TUNING_NETDEV_BUDGET TUNING_NETDEV_BUDGET_USECS \
         TUNING_UDP_TIMEOUT TUNING_UDP_TIMEOUT_STREAM; do
         if ! [[ "${!k}" =~ ^[0-9]+$ ]] || ((${!k} <= 0)); then
             kn="${k#TUNING_}"
