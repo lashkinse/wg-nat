@@ -169,7 +169,7 @@ without `10-sysctl.sh` running, alongside what we set instead:
 
 The `[tuning]` defaults are sized for a 1-vCPU / 512 MB VPS. Bigger hosts
 can lift the memory- and PPS-bound knobs proportionally. None of these
-numbers need to be exact — they are starting points; bump and re-measure
+numbers need to be exact - they are starting points; bump and re-measure
 under your actual peak load.
 
 The knobs split cleanly into two axes:
@@ -193,7 +193,7 @@ The knobs split cleanly into two axes:
 Worst-case `nf_conntrack` memory ≈ `conntrack_max × ~400 B` for entries
 plus `conntrack_hashsize × 16 B` for the hashtable. The 2 GB row is
 ~50 MB worst case, well inside budget. `rmem_max` / `wmem_max` are
-per-socket caps, not allocations — the kernel only grows the buffer up
+per-socket caps, not allocations - the kernel only grows the buffer up
 to the cap when an application asks for it, so lifting the cap on a
 big host costs nothing until traffic demands it.
 
@@ -213,7 +213,7 @@ under high PPS at the cost of slightly higher userspace latency. Past
 
 #### Combined presets
 
-**512 MB / 1 vCPU** — the shipped default; also good for cheap
+**512 MB / 1 vCPU** - the shipped default; also good for cheap
 game-port forwarders:
 
 ```toml
@@ -272,9 +272,9 @@ Past 2 GB / 4 vCPU, the rough rules of thumb:
   hot path, you rarely need more than 128k.
 - **`rmem_max` / `wmem_max`**: these caps mostly affect TCP applications
   running *on* the box (sshd, monitoring, etc.), not forwarded traffic
-  — flowtable and DNAT'd flows don't allocate per-socket buffers. Stop
+  - flowtable and DNAT'd flows don't allocate per-socket buffers. Stop
   bumping at 4-8 MB; further increases buy nothing on a pure NAT host.
-- **`netdev_max_backlog`**: scale with your peak per-CPU PPS — rule of
+- **`netdev_max_backlog`**: scale with your peak per-CPU PPS - rule of
   thumb is `≥ peak_pps_per_cpu × 2 ms` plus a comfortable cushion for
   bursts. For practical purposes 16k - 32k covers most workloads.
 - **`netdev_budget`**: past `1500 / 20000` you start hurting userspace
