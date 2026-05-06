@@ -1,6 +1,6 @@
 #!/bin/bash
-# NIC offloads (GRO/GSO/TSO) and external-interface RPS for multi-queue virtio.
-# Idempotent - safe to re-run.
+# NIC offloads (GRO/GSO/TSO + UDP GRO forwarding) and external-interface RPS
+# for multi-queue virtio. Idempotent - safe to re-run.
 
 umask 077
 
@@ -18,12 +18,18 @@ else
         warn "ethtool -K $EXTERNAL_INTERFACE failed (driver may not support all of gro/gso/tso)"
     ethtool -K "$WIREGUARD_INTERFACE" gro on gso on >/dev/null 2>&1 ||
         warn "ethtool -K $WIREGUARD_INTERFACE failed (WG tunnel may not expose all offloads)"
+    for iface in "$EXTERNAL_INTERFACE" "$WIREGUARD_INTERFACE"; do
+        ethtool -K "$iface" rx-gro-list on >/dev/null 2>&1 ||
+            warn "$iface: rx-gro-list not supported (kernel >= 5.10 required)"
+        ethtool -K "$iface" rx-udp-gro-forwarding on >/dev/null 2>&1 ||
+            warn "$iface: rx-udp-gro-forwarding not supported (kernel >= 5.10 required)"
+    done
 fi
 
 # RPS spreads softirq work across CPUs; pure overhead on a single-core box.
 NPROC=$(nproc)
 
-# rps_cpus is comma-separated 32-bit hex words; naive (1<<n)-1 overflows at n>=32.
+# rps_cpus is comma-separated 32-bit hex words; naive (1<<n)-1 works for n<=32.
 rps_mask() {
     local n="$1"
     local full=$((n / 32)) rem=$((n % 32)) out="" i
@@ -43,10 +49,10 @@ if ((NPROC > 1)); then
         fi
     done
     if ((wrote_any)); then
-        log "NIC offloads + external RPS applied (external.interface=$EXTERNAL_INTERFACE, wireguard.interface=$WIREGUARD_INTERFACE)"
+        log "NIC offloads + UDP GRO fwd + external RPS applied (external.interface=$EXTERNAL_INTERFACE, wireguard.interface=$WIREGUARD_INTERFACE)"
     else
         warn "$EXTERNAL_INTERFACE: no rps_cpus written (no rx queues writable; multiqueue may be off)"
     fi
 else
-    log "NIC offloads applied; RPS skipped (nproc=$NPROC, no benefit on single-core)"
+    log "NIC offloads + UDP GRO fwd applied; RPS skipped (nproc=$NPROC, no benefit on single-core)"
 fi
