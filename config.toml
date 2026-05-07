@@ -30,4 +30,4 @@ netdev_max_backlog     = 4096        # per-CPU input queue depth (only one queue
 netdev_budget          = 300         # max packets per softirq NAPI poll cycle (kernel default; raise only if softnet_stat shows time_squeeze)
 netdev_budget_usecs    = 2000        # max usecs per softirq NAPI poll cycle (kernel default; time-bounded twin of netdev_budget)
 udp_timeout            = 5           # short on purpose - game flows churn fast
-udp_timeout_stream     = 30          # faster conntrack turnover (flowtable handles hot paths)
+udp_timeout_stream     = 120         # kernel default; survives sparse-keepalive games (lobby/menus) without rebuilding flowtable mappings

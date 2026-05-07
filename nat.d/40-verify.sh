@@ -166,30 +166,6 @@ for iface in "$EXTERNAL_INTERFACE" "$WIREGUARD_INTERFACE"; do
         }' <<<"$features")
 done
 
-# --- RPS ---
-hdr "RPS"
-NPROC=$(nproc)
-if ((NPROC < 2)); then
-    inf "nproc=$NPROC, RPS intentionally skipped (no benefit on single-core)"
-else
-    # find avoids leaking shopt nullglob into caller scope.
-    mapfile -t files < <(find "/sys/class/net/$EXTERNAL_INTERFACE/queues/" -maxdepth 2 -name rps_cpus 2>/dev/null)
-    if ((${#files[@]} == 0)); then
-        wrn "$EXTERNAL_INTERFACE: no rx queues exposed in sysfs"
-    else
-        for q in "${files[@]}"; do
-            raw=$(cat "$q" 2>/dev/null || echo "")
-            stripped=$(tr -d ',0' <<<"$raw")
-            qname=$(basename "$(dirname "$q")")
-            if [[ -n "$stripped" ]]; then
-                pass "$EXTERNAL_INTERFACE/$qname rps_cpus=$raw"
-            else
-                wrn "$EXTERNAL_INTERFACE/$qname rps_cpus=$raw (no CPUs set - RPS inactive)"
-            fi
-        done
-    fi
-fi
-
 # --- nftables structure ---
 hdr "nftables structure"
 if ! nft list table inet "$TABLE" >/dev/null 2>&1; then

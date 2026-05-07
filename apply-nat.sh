@@ -23,7 +23,7 @@ Usage: $(basename "$0") [--config <path>] [--table <name>] [--only <stage>] [--d
 
 Stages (run in numeric order by default):
   sysctl    kernel/conntrack tuning  (nat.d/${STAGES[sysctl]})
-  nic       NIC offloads + RPS       (nat.d/${STAGES[nic]})
+  nic       NIC offloads             (nat.d/${STAGES[nic]})
   nftables  apply nft ruleset        (nat.d/${STAGES[nftables]})
 
 Special modes:

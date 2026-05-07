@@ -16,7 +16,7 @@ live in a separate project.
 └── nat.d/
     ├── lib.sh                # config loader + validation + helpers
     ├── 10-sysctl.sh          # ip_forward + conntrack/socket tuning
-    ├── 20-nic.sh             # ethtool offloads (GRO/GSO/TSO) + external RPS
+    ├── 20-nic.sh             # ethtool offloads (GRO/GSO/TSO)
     ├── 30-nftables.sh        # nft ruleset (flowtable + DNAT maps)
     ├── 40-verify.sh          # post-apply verification + log
     └── 99-teardown.sh        # remove nft table
@@ -44,7 +44,7 @@ sudo /etc/wg-nat/apply-nat.sh --config /etc/wg-nat/lab.toml --table wg_nat_lab
 sudo /etc/wg-nat/apply-nat.sh --verify
 sudo VERIFY_LOG=/var/log/apply-nat-verify.log /etc/wg-nat/apply-nat.sh --verify
 
-# remove the nft table (sysctl/external RPS are not reverted - they reset on reboot)
+# remove the nft table (sysctl is not reverted - resets on reboot)
 sudo /etc/wg-nat/apply-nat.sh --down
 
 # also: each stage can be invoked directly
@@ -90,16 +90,14 @@ netdev_max_backlog     = 4096
 netdev_budget          = 300
 netdev_budget_usecs    = 2000
 udp_timeout            = 5
-udp_timeout_stream     = 30
+udp_timeout_stream     = 120
 ```
 
-The parser in `lib.sh` is pure bash (no `tomli`, `yq`, `taplo` etc.) so it
-only accepts the subset that this project actually uses: `[section]` and
-`[[array.section]]` headers, single-line `key = value` pairs with values
-that are either integers or double-quoted strings (no escape sequences
-inside the string), and `#` line/inline comments. Dotted
-keys, multi-line strings, inline tables, arrays and the rest of the TOML
-spec aren't supported - if you need them, swap the parser out.
+The parser in `lib.sh` is pure bash and accepts only what this project
+uses: `[section]` and `[[array.section]]` headers, single-line
+`key = value` pairs (int or double-quoted string, no escapes), and `#`
+comments. Anything else (dotted keys, multi-line strings, inline
+tables, arrays) needs a real TOML parser - swap it out if you need it.
 
 ### Parameters
 
@@ -138,8 +136,8 @@ Values are validated as positive integers.
 | `netdev_max_backlog` | `4096`    | `net.core.netdev_max_backlog` - per-CPU input queue depth.                                                                                                                               |
 | `netdev_budget`      | `300`     | `net.core.netdev_budget` - max packets per softirq NAPI poll cycle. Matches the kernel default; raising it trades userspace tail-latency for fewer softirq->ksoftirqd reschedules under high PPS. See [When to raise](#when-to-raise-netdev_budget--netdev_budget_usecs) below. |
 | `netdev_budget_usecs` | `2000`    | `net.core.netdev_budget_usecs` - max usecs per softirq NAPI poll cycle. Matches the kernel default; same trade-off as above, time-bounded.                                                |
-| `udp_timeout`        | `5`       | `nf_conntrack_udp_timeout`. Short on purpose - game flows churn fast.                                                                                                                    |
-| `udp_timeout_stream` | `30`      | `nf_conntrack_udp_timeout_stream`. Lower means faster slot turnover; flowtable handles hot established traffic anyway.                                                                   |
+| `udp_timeout`        | `5`       | `nf_conntrack_udp_timeout`. Short on purpose - kill unanswered records (scans, dead handshakes) fast.                                                                                    |
+| `udp_timeout_stream` | `120`     | `nf_conntrack_udp_timeout_stream`. Kernel default; long enough to survive sparse-keepalive phases (lobbies, loading) without rebuilding the flowtable mapping.                           |
 
 `10-sysctl.sh` also turns off `nf_conntrack_acct`, `nf_conntrack_timestamp`,
 and `nf_conntrack_helper` (pure per-flow memory savings, no behaviour change).
@@ -158,7 +156,6 @@ without `10-sysctl.sh` running, alongside what we set instead:
 | `net.netfilter.nf_conntrack_max`                | RAM-scaled (~8-16k on 512 MB) | `32768`      | Pin a predictable cap with 2-4x headroom over the auto-sized default.                          |
 | `nf_conntrack` hashsize                         | `nf_conntrack_max / 4`        | `32768`      | 1:1 ratio for the shortest hash chains; ~512 KB hashtable is trivial here.                     |
 | `net.netfilter.nf_conntrack_udp_timeout`        | `30`                          | `5`          | Game UDP churns fast - drop dead flows aggressively to free conntrack slots.                   |
-| `net.netfilter.nf_conntrack_udp_timeout_stream` | `120` (older kernels: `180`)  | `30`         | Same idea for established UDP. The flowtable already keeps the hot path off conntrack lookups. |
 | `net.netfilter.nf_conntrack_acct`               | `0`                           | `0`          | Already off - we just keep it that way for memory savings.                                     |
 | `net.netfilter.nf_conntrack_timestamp`          | `0`                           | `0`          | Same.                                                                                          |
 | `net.netfilter.nf_conntrack_helper`             | `0`                           | `0`          | Same.                                                                                          |
@@ -170,19 +167,18 @@ can lift the memory-bound knobs proportionally. None of these numbers
 need to be exact - they are starting points; bump and re-measure under
 your actual peak load.
 
-The knobs split cleanly into three groups:
+The knobs split into three groups:
 
-- **RAM-bound**: `conntrack_max`, `conntrack_hashsize`, `rmem_max`,
-  `wmem_max`, `netdev_max_backlog`. Drive these from the host's RAM.
-- **Workload-bound**: `udp_timeout`, `udp_timeout_stream`. These reflect
-  the traffic shape (UDP game flows churn fast), not the host size.
-  Don't scale them with hardware.
-- **Leave alone**: `netdev_budget`, `netdev_budget_usecs` ship at the
-  kernel defaults (`300` / `2000`). They are caps, not targets - on a
-  game forwarder PPS is rarely high enough to hit them. Raising them
-  enlarges the worst-case softirq window, which adds tail-latency to
-  userspace and to other packets queued during the same NAPI pass.
-  See [When to raise](#when-to-raise-netdev_budget--netdev_budget_usecs).
+- **RAM-bound** (drive from host RAM): `conntrack_max`,
+  `conntrack_hashsize`, `rmem_max`, `wmem_max`, `netdev_max_backlog`.
+- **Workload-bound** (don't scale with hardware): `udp_timeout` stays
+  short (kill dead one-way records fast); `udp_timeout_stream` stays
+  at the kernel default so quiet phases don't drop the flowtable
+  mapping.
+- **Leave alone**: `netdev_budget` / `netdev_budget_usecs` are caps,
+  not targets - raising them only helps once NAPI actually hits them,
+  and at the cost of softirq tail-latency. See
+  [When to raise](#when-to-raise-netdev_budget--netdev_budget_usecs).
 
 #### By RAM
 
@@ -193,47 +189,31 @@ The knobs split cleanly into three groups:
 | 2 GB     | `131072`        | `131072`             | `4194304` (4 MB)        | `16384`              |
 
 Worst-case `nf_conntrack` memory ≈ `conntrack_max × ~400 B` for entries
-plus `conntrack_hashsize × 16 B` for the hashtable. The 2 GB row is
-~50 MB worst case, well inside budget. `rmem_max` / `wmem_max` are
-per-socket caps, not allocations - the kernel only grows the buffer up
-to the cap when an application asks for it, so lifting the cap on a
-big host costs nothing until traffic demands it.
+plus `conntrack_hashsize × 16 B` for the hashtable (~50 MB at the 2 GB
+row). `rmem_max` / `wmem_max` are caps, not allocations - lifting them
+on a big host costs nothing until an app actually asks for the buffer.
 
 #### When to raise `netdev_budget` / `netdev_budget_usecs`
 
-Don't pre-emptively scale these with vCPU. They are caps on a single
-NAPI poll cycle - if your PPS never makes NAPI hit the cap, raising
-them changes nothing. If your PPS *does* hit the cap, raising them
-reduces softirq->ksoftirqd reschedules and packets lingering in the
-backlog, **at the cost of holding the CPU in softirq for longer**,
-which raises tail-latency for userspace and for other packets queued
-during the same pass. On a latency-sensitive game forwarder this is
-usually the wrong trade.
+These are caps on a single NAPI poll cycle. If your PPS never makes
+NAPI hit them, raising them changes nothing. If it *does*, raising
+them trades userspace tail-latency for fewer
+softirq->ksoftirqd reschedules - usually the wrong trade on a
+latency-sensitive game forwarder.
 
-Look at `/proc/net/softnet_stat` under your peak load - one row per
-CPU, hex columns:
-
-```
-column 1: total packets processed
-column 2: dropped (backlog overflow - bump netdev_max_backlog)
-column 3: time_squeeze (NAPI hit the budget cap and bailed)
-```
-
-If column 3 grows steadily under load, NAPI is bailing out of polls
-before the queue is drained - then it's worth raising the budget. A
-reasonable next step is `600 / 4000`, then re-measure. Past `1500 /
-20000` you start hurting userspace latency on non-dedicated cores.
-Dedicated routing appliances run `5000 / 50000`, but that's a
-different workload shape than this project targets.
+Use `/proc/net/softnet_stat` (one row per CPU, hex columns) as
+evidence: column 1 = packets processed, column 2 = dropped (backlog
+overflow - bump `netdev_max_backlog`), column 3 = `time_squeeze`
+(NAPI hit the cap and bailed). If column 3 grows steadily under
+load, try `600 / 4000` and re-measure. Past `1500 / 20000` you start
+hurting userspace latency on non-dedicated cores.
 
 #### Combined presets
 
-Both `netdev_budget` and `netdev_budget_usecs` keep their kernel
-defaults across the presets below; raise them only after observing
-`time_squeeze` per the note above.
+`netdev_budget` / `netdev_budget_usecs` keep their kernel defaults
+in every preset; raise them only on `time_squeeze` evidence.
 
-**512 MB / 1 vCPU** - the shipped default; also good for cheap
-game-port forwarders:
+**512 MB / 1 vCPU** (shipped default):
 
 ```toml
 [tuning]
@@ -245,7 +225,7 @@ netdev_max_backlog     = 4096
 netdev_budget          = 300
 netdev_budget_usecs    = 2000
 udp_timeout            = 5
-udp_timeout_stream     = 30
+udp_timeout_stream     = 120
 ```
 
 **1 GB / 2 vCPU**:
@@ -260,7 +240,7 @@ netdev_max_backlog     = 8192
 netdev_budget          = 300
 netdev_budget_usecs    = 2000
 udp_timeout            = 5
-udp_timeout_stream     = 30
+udp_timeout_stream     = 120
 ```
 
 **2 GB / 3 - 4 vCPU**:
@@ -275,7 +255,7 @@ netdev_max_backlog     = 16384
 netdev_budget          = 300
 netdev_budget_usecs    = 2000
 udp_timeout            = 5
-udp_timeout_stream     = 30
+udp_timeout_stream     = 120
 ```
 
 #### Scaling further
@@ -300,9 +280,10 @@ Past 2 GB / 4 vCPU, the rough rules of thumb:
   spec - bump them on evidence (`time_squeeze` in
   `/proc/net/softnet_stat`). See [When to raise](#when-to-raise-netdev_budget--netdev_budget_usecs).
 - **`udp_timeout` / `udp_timeout_stream`**: don't change with hardware.
-  Lower them further if you see `nf_conntrack: table full` despite a
-  high `conntrack_max`; raise only if the forwarded application needs
-  long-lived idle UDP.
+  Lower `udp_timeout` only if `nf_conntrack: table full` despite a
+  high `conntrack_max`. Keep `udp_timeout_stream` at the kernel
+  default (`120`); lowering it drops the flowtable mapping during
+  quiet phases.
 
 For anything past 4 vCPU / 4 GB, also enable multi-queue virtio (or
 your NIC's equivalent), pin `eth0` RX-IRQ + the WireGuard kernel

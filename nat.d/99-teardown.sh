@@ -1,6 +1,6 @@
 #!/bin/bash
 # Remove the nft NAT/forward table.
-# Sysctl/external RPS settings are NOT reverted - they reset on reboot.
+# Sysctl settings are NOT reverted - they reset on reboot.
 
 umask 077
 
