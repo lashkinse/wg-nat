@@ -161,9 +161,7 @@ for iface in "$EXTERNAL_INTERFACE" "$WIREGUARD_INTERFACE"; do
     done < <(awk '
         /^generic-receive-offload:/ ||
         /^generic-segmentation-offload:/ ||
-        /^tcp-segmentation-offload:/ ||
-        /^rx-gro-list:/ ||
-        /^rx-udp-gro-forwarding:/ {
+        /^tcp-segmentation-offload:/ {
             sub(":", "", $1); print $1 "\t" $2
         }' <<<"$features")
 done
