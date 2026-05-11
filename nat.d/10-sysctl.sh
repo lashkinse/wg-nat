@@ -1,5 +1,5 @@
 #!/bin/bash
-# Kernel/conntrack tuning for the WireGuard NAT forwarder.
+# Kernel/conntrack tuning for the tunnel NAT forwarder.
 # Values come from [tuning] in config.toml.
 
 umask 077

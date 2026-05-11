@@ -69,18 +69,18 @@ delete table inet $TABLE
 table inet $TABLE {
     flowtable ft {
         hook ingress priority filter
-        devices = { $EXTERNAL_INTERFACE, $WIREGUARD_INTERFACE }
+        devices = { $EXTERNAL_INTERFACE, $TUNNEL_INTERFACE }
     }
 ${MAPS:+
 $MAPS}
     chain raw_pre {
         type filter hook prerouting priority raw; policy accept;
-        iifname "$EXTERNAL_INTERFACE" udp dport $WIREGUARD_PORT notrack
+        iifname "$EXTERNAL_INTERFACE" udp dport $TUNNEL_PORT notrack
     }
 
     chain raw_out {
         type filter hook output priority raw; policy accept;
-        oifname "$EXTERNAL_INTERFACE" udp sport $WIREGUARD_PORT notrack
+        oifname "$EXTERNAL_INTERFACE" udp sport $TUNNEL_PORT notrack
     }
 
     chain forward {

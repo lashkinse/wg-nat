@@ -95,7 +95,7 @@ done
 
 # --- interfaces ---
 hdr "interfaces"
-for iface in "$EXTERNAL_INTERFACE" "$WIREGUARD_INTERFACE"; do
+for iface in "$EXTERNAL_INTERFACE" "$TUNNEL_INTERFACE"; do
     linfo=$(ip link show "$iface" 2>/dev/null | head -1) || true
     if [[ -z "$linfo" ]]; then
         fl "interface $iface not found"
@@ -146,7 +146,7 @@ check_sysctl net.netfilter.nf_conntrack_helper 0
 
 # --- NIC offloads ---
 hdr "NIC offloads"
-for iface in "$EXTERNAL_INTERFACE" "$WIREGUARD_INTERFACE"; do
+for iface in "$EXTERNAL_INTERFACE" "$TUNNEL_INTERFACE"; do
     if ! features=$(ethtool -k "$iface" 2>/dev/null); then
         wrn "$iface: ethtool -k failed"
         continue
@@ -200,10 +200,10 @@ else
         $1=="table" && $3==t {in_t=1}
         in_t && /^}/ {in_t=0}
         in_t && /devices =/ {print; exit}' <<<"$nft_ruleset"); then
-        if [[ "$devs" == *"$EXTERNAL_INTERFACE"* && "$devs" == *"$WIREGUARD_INTERFACE"* ]]; then
-            pass "flowtable devices include both $EXTERNAL_INTERFACE and $WIREGUARD_INTERFACE"
+        if [[ "$devs" == *"$EXTERNAL_INTERFACE"* && "$devs" == *"$TUNNEL_INTERFACE"* ]]; then
+            pass "flowtable devices include both $EXTERNAL_INTERFACE and $TUNNEL_INTERFACE"
         else
-            fl "flowtable devices missing one of {$EXTERNAL_INTERFACE,$WIREGUARD_INTERFACE}: $devs"
+            fl "flowtable devices missing one of {$EXTERNAL_INTERFACE,$TUNNEL_INTERFACE}: $devs"
         fi
     fi
 
@@ -258,14 +258,14 @@ else
         fl "postrouting: no MASQUERADE/SNAT rule for $EXTERNAL_INTERFACE"
     fi
 
-    # NOTRACK on the WG transport port - now scoped by iifname.
+    # NOTRACK on the tunnel transport port - now scoped by iifname.
     raw_pre=$(nft list chain inet "$TABLE" raw_pre 2>/dev/null)
-    if [[ "$raw_pre" == *"iifname \"$EXTERNAL_INTERFACE\" udp dport $WIREGUARD_PORT notrack"* ]]; then
-        pass "raw_pre: NOTRACK iifname=$EXTERNAL_INTERFACE udp dport $WIREGUARD_PORT"
-    elif [[ "$raw_pre" == *"udp dport $WIREGUARD_PORT notrack"* ]]; then
+    if [[ "$raw_pre" == *"iifname \"$EXTERNAL_INTERFACE\" udp dport $TUNNEL_PORT notrack"* ]]; then
+        pass "raw_pre: NOTRACK iifname=$EXTERNAL_INTERFACE udp dport $TUNNEL_PORT"
+    elif [[ "$raw_pre" == *"udp dport $TUNNEL_PORT notrack"* ]]; then
         wrn "raw_pre: NOTRACK present but not iifname-scoped (apply 30-nftables.sh again)"
     else
-        fl "raw_pre: NOTRACK rule missing for udp dport $WIREGUARD_PORT"
+        fl "raw_pre: NOTRACK rule missing for udp dport $TUNNEL_PORT"
     fi
 
     # forward chain: flow add + MSS clamp
@@ -323,7 +323,7 @@ else
 fi
 
 # Interface byte counters snapshot
-for iface in "$EXTERNAL_INTERFACE" "$WIREGUARD_INTERFACE"; do
+for iface in "$EXTERNAL_INTERFACE" "$TUNNEL_INTERFACE"; do
     emit ""
     emit "--- ip -s link show $iface ---"
     ip_out=$(ip -s link show "$iface" 2>/dev/null)

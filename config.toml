@@ -1,4 +1,4 @@
-[wireguard]
+[tunnel]
 interface = "wg0"
 port = 51820
 

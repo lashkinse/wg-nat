@@ -15,7 +15,7 @@ if ! command -v ethtool >/dev/null 2>&1; then
 else
     ethtool -K "$EXTERNAL_INTERFACE" gro on gso on tso on >/dev/null 2>&1 ||
         warn "ethtool -K $EXTERNAL_INTERFACE failed (driver may not support all of gro/gso/tso)"
-    ethtool -K "$WIREGUARD_INTERFACE" gro on gso on >/dev/null 2>&1 ||
-        warn "ethtool -K $WIREGUARD_INTERFACE failed (WG tunnel may not expose all offloads)"
-    log "NIC offloads applied (external.interface=$EXTERNAL_INTERFACE, wireguard.interface=$WIREGUARD_INTERFACE)"
+    ethtool -K "$TUNNEL_INTERFACE" gro on gso on >/dev/null 2>&1 ||
+        warn "ethtool -K $TUNNEL_INTERFACE failed (tunnel may not expose all offloads)"
+    log "NIC offloads applied (external.interface=$EXTERNAL_INTERFACE, tunnel.interface=$TUNNEL_INTERFACE)"
 fi

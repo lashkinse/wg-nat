@@ -36,8 +36,8 @@ CLI flags (override env vars below):
   --table  <name>   nft table name      (sets NFT_TABLE)
 
 Environment:
-  NAT_CONF    path to config.toml   (default: /etc/wg-nat/config.toml)
-  NFT_TABLE   nft table name        (default: wg_nat)
+  NAT_CONF    path to config.toml   (default: /etc/tun-nat/config.toml)
+  NFT_TABLE   nft table name        (default: tun_nat)
   VERIFY_LOG  path to verify log      (default: /tmp/apply-nat-verify.log)
 EOF
 }

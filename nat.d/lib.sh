@@ -1,8 +1,8 @@
 # shellcheck shell=bash
 # Shared helpers + config loader for apply-nat stages. Sourced, not executed.
 
-CONF="${NAT_CONF:-/etc/wg-nat/config.toml}"
-TABLE="${NFT_TABLE:-wg_nat}"
+CONF="${NAT_CONF:-/etc/tun-nat/config.toml}"
+TABLE="${NFT_TABLE:-tun_nat}"
 
 # Even in minimal mode (teardown) we still need TABLE for `nft delete table`.
 [[ "$TABLE" =~ ^[A-Za-z_][A-Za-z0-9_]{0,31}$ ]] || {
@@ -132,8 +132,8 @@ load_config() {
     local line_no=0 raw line key raw_value value next_section
     local section="" rule_protocol="" rule_target="" rule_ports="" rule_line=0
 
-    WIREGUARD_INTERFACE=""
-    WIREGUARD_PORT=""
+    TUNNEL_INTERFACE=""
+    TUNNEL_PORT=""
     EXTERNAL_INTERFACE=""
     EXTERNAL_IP=""
     TUNING_CONNTRACK_MAX=""
@@ -173,7 +173,7 @@ load_config() {
             finish_port_rule
             section="$next_section"
             case "$section" in
-                wireguard | external | tuning) ;;
+                tunnel | external | tuning) ;;
                 *) die "unknown TOML section at $CONF:$line_no: $section" ;;
             esac
             continue
@@ -188,8 +188,8 @@ load_config() {
             die "invalid TOML value at $CONF:$line_no: $raw_value"
 
         case "$section:$key" in
-            wireguard:interface) WIREGUARD_INTERFACE="$value" ;;
-            wireguard:port) WIREGUARD_PORT="$value" ;;
+            tunnel:interface) TUNNEL_INTERFACE="$value" ;;
+            tunnel:port) TUNNEL_PORT="$value" ;;
             external:interface) EXTERNAL_INTERFACE="$value" ;;
             external:ip) EXTERNAL_IP="$value" ;;
             tuning:conntrack_max) TUNING_CONNTRACK_MAX="$value" ;;
@@ -230,16 +230,16 @@ if [[ "${NAT_LIB_MINIMAL:-0}" != "1" ]]; then
     [[ -r "$CONF" ]] || die "cannot read $CONF"
     load_config
 
-    [[ "${WIREGUARD_INTERFACE:-}" ]] || die "wireguard.interface not set in $CONF"
+    [[ "${TUNNEL_INTERFACE:-}" ]] || die "tunnel.interface not set in $CONF"
     [[ "${EXTERNAL_INTERFACE:-}" ]] || die "external.interface not set in $CONF"
-    if ! [[ "${WIREGUARD_PORT:-}" =~ ^[0-9]+$ ]] || ! _valid_port "$WIREGUARD_PORT"; then
-        die "wireguard.port must be 1-65535: ${WIREGUARD_PORT:-}"
+    if ! [[ "${TUNNEL_PORT:-}" =~ ^[0-9]+$ ]] || ! _valid_port "$TUNNEL_PORT"; then
+        die "tunnel.port must be 1-65535: ${TUNNEL_PORT:-}"
     fi
     if [[ -n "${EXTERNAL_IP:-}" ]] && ! _valid_ipv4 "$EXTERNAL_IP"; then
         die "external.ip must be IPv4 (octets 0-255) or empty: ${EXTERNAL_IP}"
     fi
 
-    check_iface wireguard.interface "$WIREGUARD_INTERFACE"
+    check_iface tunnel.interface "$TUNNEL_INTERFACE"
     check_iface external.interface "$EXTERNAL_INTERFACE"
 
     # [tuning] defaults: sized for a 1-core / 512 MB VPS. Override per-host.

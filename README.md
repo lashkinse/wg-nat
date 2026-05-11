@@ -1,4 +1,4 @@
-# wg-nat - nftables NAT/forwarding for WireGuard
+# tun-nat - nftables NAT/forwarding for any tunnel interface
 
 TOML-configured nftables NAT with software flowtable offload, O(1) DNAT
 interval maps, and conntrack/NIC tuning split into numbered stages.
@@ -10,7 +10,7 @@ live in a separate project.
 ## Layout
 
 ```
-/etc/wg-nat/
+/etc/tun-nat/
 ├── config.toml           # TOML config
 ├── apply-nat.sh          # orchestrator
 └── nat.d/
@@ -29,41 +29,41 @@ and they will run in order if you wire them into the orchestrator.
 
 ```bash
 # full apply (sysctl + nic + nftables)
-sudo /etc/wg-nat/apply-nat.sh
+sudo /etc/tun-nat/apply-nat.sh
 
 # only one stage (debug / re-tune without touching the rest)
-sudo /etc/wg-nat/apply-nat.sh --only sysctl
-sudo /etc/wg-nat/apply-nat.sh --only nic
-sudo /etc/wg-nat/apply-nat.sh --only nftables
+sudo /etc/tun-nat/apply-nat.sh --only sysctl
+sudo /etc/tun-nat/apply-nat.sh --only nic
+sudo /etc/tun-nat/apply-nat.sh --only nftables
 
 # point at a non-default config / table without exporting env vars
-sudo /etc/wg-nat/apply-nat.sh --config /etc/wg-nat/lab.toml --table wg_nat_lab
+sudo /etc/tun-nat/apply-nat.sh --config /etc/tun-nat/lab.toml --table tun_nat_lab
 
 # verify that everything applied correctly; writes full report to $VERIFY_LOG
 # (default /tmp/apply-nat-verify.log). Exit 0 if no FAILs, 1 otherwise.
-sudo /etc/wg-nat/apply-nat.sh --verify
-sudo VERIFY_LOG=/var/log/apply-nat-verify.log /etc/wg-nat/apply-nat.sh --verify
+sudo /etc/tun-nat/apply-nat.sh --verify
+sudo VERIFY_LOG=/var/log/apply-nat-verify.log /etc/tun-nat/apply-nat.sh --verify
 
 # remove the nft table (sysctl is not reverted - resets on reboot)
-sudo /etc/wg-nat/apply-nat.sh --down
+sudo /etc/tun-nat/apply-nat.sh --down
 
 # also: each stage can be invoked directly
-sudo /etc/wg-nat/nat.d/30-nftables.sh
-sudo /etc/wg-nat/nat.d/40-verify.sh
+sudo /etc/tun-nat/nat.d/30-nftables.sh
+sudo /etc/tun-nat/nat.d/40-verify.sh
 ```
 
 ## Environment
 
 | var          | default                       | meaning                                       |
 | ------------ | ----------------------------- | --------------------------------------------- |
-| `NAT_CONF`   | `/etc/wg-nat/config.toml`   | path to config (overridden by `--config`)     |
-| `NFT_TABLE`  | `wg_nat`                    | nftables table name (overridden by `--table`) |
+| `NAT_CONF`   | `/etc/tun-nat/config.toml`   | path to config (overridden by `--config`)     |
+| `NFT_TABLE`  | `tun_nat`                    | nftables table name (overridden by `--table`) |
 | `VERIFY_LOG` | `/tmp/apply-nat-verify.log` | path for the `--verify` log                   |
 
 ## config.toml
 
 ```toml
-[wireguard]
+[tunnel]
 interface = "wg0"
 port = 51820
 
@@ -101,12 +101,12 @@ tables, arrays) needs a real TOML parser - swap it out if you need it.
 
 ### Parameters
 
-`[wireguard]` - describes the WireGuard tunnel on this host:
+`[tunnel]` - describes the tunnel interface on this host (WireGuard, AmneziaWG, OpenVPN tun, GRE, etc.):
 
 | key         | type   | meaning                                                                                                               |
 | ----------- | ------ | --------------------------------------------------------------------------------------------------------------------- |
 | `interface` | string | tunnel interface name (e.g. `wg0`). Must exist when apply-nat runs.                                                   |
-| `port`      | int    | UDP port the WG transport listens on. Added to the nft `notrack` rule so tunnel traffic doesn't burn conntrack slots. |
+| `port`      | int    | UDP port the tunnel transport listens on. Added to the nft `notrack` rule so tunnel traffic doesn't burn conntrack slots. |
 
 `[external]` - the WAN-facing interface packets arrive on:
 
@@ -120,7 +120,7 @@ tables, arrays) needs a real TOML parser - swap it out if you need it.
 | key        | type   | meaning                                          |
 | ---------- | ------ | ------------------------------------------------ |
 | `protocol` | string | `tcp` or `udp`.                                  |
-| `target`   | string | IPv4 to DNAT to (typically a WG client address). |
+| `target`   | string | IPv4 to DNAT to (typically a tunnel peer address). |
 | `ports`    | string | single port (`27015`) or range (`27015-27050`).  |
 
 `[tuning]` - kernel/conntrack/socket-buffer knobs read by `10-sysctl.sh`.
@@ -150,7 +150,7 @@ without `10-sysctl.sh` running, alongside what we set instead:
 | key                                             | kernel default                | this project | why we override                                                                                |
 | ----------------------------------------------- | ----------------------------- | ------------ | ---------------------------------------------------------------------------------------------- |
 | `net.ipv4.ip_forward`                           | `0`                           | `1`          | Mandatory - NAT/forward cannot work without it.                                                |
-| `net.core.rmem_max`                             | `212992` (208 KB)             | `1048576`    | Bigger per-socket recv buffer cap so the WG tunnel keeps up under bursty load.                 |
+| `net.core.rmem_max`                             | `212992` (208 KB)             | `1048576`    | Bigger per-socket recv buffer cap so the tunnel keeps up under bursty load.                 |
 | `net.core.wmem_max`                             | `212992` (208 KB)             | `1048576`    | Same for send.                                                                                 |
 | `net.core.netdev_max_backlog`                   | `1000`                        | `4096`       | Avoid drops on a single softirq CPU during traffic peaks.                                      |
 | `net.netfilter.nf_conntrack_max`                | RAM-scaled (~8-16k on 512 MB) | `32768`      | Pin a predictable cap with 2-4x headroom over the auto-sized default.                          |
@@ -267,7 +267,7 @@ Past 2 GB / 4 vCPU, the rough rules of thumb:
   flows + ~50% headroom. Read the live count under load via
   `cat /proc/sys/net/netfilter/nf_conntrack_count` and size from there.
   Past 256k-512k entries the hashtable starts taking real memory; on a
-  forwarder with notrack on the WG transport port and flowtable on the
+  forwarder with notrack on the tunnel transport port and flowtable on the
   hot path, you rarely need more than 128k.
 - **`rmem_max` / `wmem_max`**: these caps mostly affect TCP applications
   running *on* the box (sshd, monitoring, etc.), not forwarded traffic
@@ -286,7 +286,7 @@ Past 2 GB / 4 vCPU, the rough rules of thumb:
   quiet phases.
 
 For anything past 4 vCPU / 4 GB, also enable multi-queue virtio (or
-your NIC's equivalent), pin `eth0` RX-IRQ + the WireGuard kernel
+your NIC's equivalent), pin `eth0` RX-IRQ + the tunnel kernel
 workqueue to specific CPUs, and consider XDP for the DNAT fast path.
 Those changes live outside `config.toml`.
 
@@ -294,10 +294,10 @@ Those changes live outside `config.toml`.
 
 `30-nftables.sh` (re)creates `inet $NFT_TABLE` atomically with:
 
-- `raw_pre` / `raw_out` - `notrack` on the WG transport port so the tunnel
+- `raw_pre` / `raw_out` - `notrack` on the tunnel transport port so the tunnel
   itself does not allocate conntrack slots.
 - `prerouting` (dstnat) - DNAT incoming game ports from `external.interface`
-  to WireGuard client IPs via `dnat_tcp` / `dnat_udp` interval maps (O(1)
+  to tunnel peer IPs via `dnat_tcp` / `dnat_udp` interval maps (O(1)
   match on `dport`).
 - `postrouting` (srcnat) - `MASQUERADE` on `external.interface`, or static
   `SNAT` to `external.ip` when set.
@@ -309,7 +309,7 @@ Those changes live outside `config.toml`.
   the egress route per packet, which is correct on multi-interface hosts;
   scope it down explicitly if you ever need a non-default behaviour.
 - `flowtable ft` - software fast path bound to both
-  `external.interface` and `wireguard.interface` so established UDP NAT'd
+  `external.interface` and `tunnel.interface` so established UDP NAT'd
   flows skip the full netfilter walk.
 
 This project is IPv4-only: `[[port_rules]].target` is an IPv4 address and
@@ -333,27 +333,27 @@ your own), a packet has to be accepted by **both** for it to pass.
 
 Practical consequence: if UFW / firewalld / any host firewall defaults to
 `DEFAULT_FORWARD_POLICY=DROP` (UFW's default), DNAT'd packets get rewritten
-in `prerouting` and then dropped in `forward` before they leave via the WG
+in `prerouting` and then dropped in `forward` before they leave via the tunnel
 interface. Symptoms: `tcpdump` on the external interface sees the `SYN`,
-`tcpdump` on the WG interface sees nothing, no `conntrack` entry appears.
+`tcpdump` on the tunnel interface sees nothing, no `conntrack` entry appears.
 
 ### UFW
 
-Add an explicit transit rule for both directions and keep the WG transport
+Add an explicit transit rule for both directions and keep the tunnel transport
 port open on the host:
 
 ```bash
-# inbound port-forward traffic (external -> WG peers)
-sudo ufw route allow in on <external> out on <wireguard>
-# WG clients using the VPS as an internet gateway (WG peers -> external)
-sudo ufw route allow in on <wireguard> out on <external>
-# WG transport itself
-sudo ufw allow <wireguard_port>/udp
+# inbound port-forward traffic (external -> tunnel peers)
+sudo ufw route allow in on <external> out on <tunnel>
+# tunnel clients using the VPS as an internet gateway (tunnel peers -> external)
+sudo ufw route allow in on <tunnel> out on <external>
+# tunnel transport itself
+sudo ufw allow <tunnel_port>/udp
 sudo ufw reload
 ```
 
 For the example `config.toml` in this README (`external.interface = "eth0"`,
-`wireguard.interface = "wg0"`, `wireguard.port = 51820`):
+`tunnel.interface = "wg0"`, `tunnel.port = 51820`):
 
 ```bash
 sudo ufw route allow in on eth0 out on wg0
@@ -370,31 +370,33 @@ harmless but misleading.
 The reverse direction of an established port-forward is auto-allowed by the
 `ufw-before-forward` chain via `-m conntrack --ctstate RELATED,ESTABLISHED`,
 so you don't need a separate "wg0 -> eth0" rule just for return traffic.
-Add it only if WG peers should be able to initiate **new** outbound
+Add it only if tunnel peers should be able to initiate **new** outbound
 connections to the internet through this host.
 
 ### firewalld
 
-Add the external and WG interfaces to a zone with masquerading/forwarding
+Add the external and tunnel interfaces to a zone with masquerading/forwarding
 or add direct forward rules equivalent to the UFW commands above. `apply-nat`
 doesn't interact with firewalld zones automatically.
 
-## Hooking into WireGuard
+## Hooking into your tunnel
 
 If you want the NAT/forwarding rules to come up and go down with the tunnel,
-hook `apply-nat.sh` from the WG interface config. Use `PostUp` (the WG
+hook `apply-nat.sh` from the tunnel interface config. Use `PostUp` (the tunnel
 interface already exists when it fires - `lib.sh` validates that) and
 `PreDown` (still exists at this point, so `--down` can clean up the table).
-Avoid `PostDown`: by then `$WIREGUARD_INTERFACE` is gone and the validation
+Avoid `PostDown`: by then `$TUNNEL_INTERFACE` is gone and the validation
 in `lib.sh` will refuse to run.
 
-For `wg-quick`, in `/etc/wireguard/wg0.conf`, under `[Interface]`:
+### WireGuard / AmneziaWG (wg-quick)
+
+For `wg-quick`, in `/etc/wireguard/wg0.conf` (or `/etc/amnezia/amneziawg/awg0.conf`), under `[Interface]`:
 
 ```ini
 [Interface]
 # ...
-PostUp  = /etc/wg-nat/apply-nat.sh
-PreDown = /etc/wg-nat/apply-nat.sh --down
+PostUp  = /etc/tun-nat/apply-nat.sh
+PreDown = /etc/tun-nat/apply-nat.sh --down
 ```
 
 Bring it up:
@@ -402,23 +404,23 @@ Bring it up:
 ```bash
 sudo wg-quick down wg0 || true
 sudo wg-quick up wg0
-sudo /etc/wg-nat/apply-nat.sh --verify
+sudo /etc/tun-nat/apply-nat.sh --verify
 ```
 
 Prefer a systemd unit instead? Bind it to the tunnel:
 
 ```ini
-# /etc/systemd/system/wg-nat.service
+# /etc/systemd/system/tun-nat.service
 [Unit]
-Description=wg-nat for wg0
+Description=tun-nat for wg0
 After=wg-quick@wg0.service
 BindsTo=wg-quick@wg0.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/etc/wg-nat/apply-nat.sh
-ExecStop=/etc/wg-nat/apply-nat.sh --down
+ExecStart=/etc/tun-nat/apply-nat.sh
+ExecStop=/etc/tun-nat/apply-nat.sh --down
 
 [Install]
 WantedBy=multi-user.target
@@ -426,7 +428,7 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now wg-nat.service
+sudo systemctl enable --now tun-nat.service
 ```
 
 Both paths are safe to combine with manual runs of `apply-nat.sh`: each stage
